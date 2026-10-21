@@ -44,6 +44,7 @@ footer{grid-area:bar;background:#f7f7f7;border-top:1px solid var(--sf2);display:
 #pw.hide{display:none}
 #setup{max-width:480px;background:var(--sf);padding:22px;border-radius:14px;line-height:1.6;font-size:14px;color:var(--mu)}
 #setup input{width:100%;margin:12px 0}
+.chip{cursor:pointer}.chip b{margin-left:8px;color:var(--mu)}.chip b:hover{color:var(--tx)}.mini{padding:7px 14px;font-size:14px;width:130px}
 #gate{position:fixed;inset:0;background:#fff;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px;line-height:1.6}#gate.off{display:none}#gate .btn{height:46px;font-size:15px}#gm{color:var(--mu);font-size:14px;max-width:420px;word-break:break-all}
 @media(max-width:800px){body{grid-template-columns:1fr;grid-template-areas:"main" "bar"}aside{display:none}footer{grid-template-columns:1fr}.vol{display:none}#pw{width:200px;height:112px}}
 </style>
@@ -55,6 +56,7 @@ footer{grid-area:bar;background:#f7f7f7;border-top:1px solid var(--sf2);display:
   <button class="on" data-v="home">검색 / 홈</button>
   <button data-v="rec">나를 위한 추천</button>
   <button data-v="likes">좋아요</button>
+  <button data-v="dis">싫어하는 장르</button>
   <button data-v="key">API 키 설정</button>
   <button data-v="out" style="margin-top:auto">로그아웃</button>
 </aside>
@@ -83,30 +85,40 @@ import {getFirestore,doc,getDoc,setDoc} from "https://www.gstatic.com/firebasejs
 const firebaseConfig={apiKey:"AIzaSyAtfbH5Pv49sYNCFUSgG6LXoF680X0cw2g",authDomain:"streaming-music-dfe0e.firebaseapp.com",projectId:"streaming-music-dfe0e",storageBucket:"streaming-music-dfe0e.firebasestorage.app",messagingSenderId:"280658811787",appId:"1:280658811787:web:96a93e8147fb9e32ea6d8e"};
 const fbApp=initializeApp(firebaseConfig),auth=getAuth(fbApp),db=getFirestore(fbApp);
 let uid=null,saveT;
-function scheduleSave(){if(!uid)return;clearTimeout(saveT);saveT=setTimeout(()=>setDoc(doc(db,'users',uid),{ytKey:key,likes,hist},{merge:true}).catch(()=>{}),800)}
+function scheduleSave(){if(!uid)return;clearTimeout(saveT);saveT=setTimeout(()=>setDoc(doc(db,'users',uid),{ytKey:key,likes,hist,genres,dislikes},{merge:true}).catch(()=>{}),800)}
 const $=s=>document.querySelector(s);
 const store={set(){scheduleSave()}};
-let key='', likes=[], hist=[];
+const DEF=['로파이','ASMR','팟캐스트','재즈','집중 음악'];
+let key='', likes=[], hist=[], genres=[...DEF], dislikes=[];
 let list=[], idx=-1, player, ready=false, timer;
-const CHIPS=['K-POP','발라드','로파이','ASMR','수면 ASMR','팟캐스트','집중 음악','드라이브 플리','재즈','힙합'];
 const dec=s=>{const t=document.createElement('textarea');t.innerHTML=s;return t.value};
 const fmt=s=>{s=Math.floor(s||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-$('#chips').innerHTML=CHIPS.map(c=>`<button class="chip">${c}</button>`).join('');
-$('#chips').onclick=e=>{if(e.target.classList.contains('chip')){$('#q').value=e.target.textContent;search(e.target.textContent)}};
+function renderChips(){
+  $('#chips').innerHTML=genres.map((c,i)=>`<span class="chip"><span data-g="${i}">${esc(c)}</span><b data-x="${i}">×</b></span>`).join('')+'<input id="ng" class="mini" placeholder="+ 장르 추가">';
+}
+$('#chips').onclick=e=>{const g=e.target.dataset.g,x=e.target.dataset.x;
+  if(x!==undefined){genres.splice(+x,1);store.set();renderChips()}
+  else if(g!==undefined){const n=genres[+g];$('#q').value=n;search(n)}};
+$('#chips').onkeydown=e=>{if(e.target.id==='ng'&&e.key==='Enter'&&e.target.value.trim()){genres.push(e.target.value.trim());store.set();renderChips();$('#ng').focus()}};
+renderChips();
 $('#go').onclick=()=>search($('#q').value);
 $('#q').onkeydown=e=>{if(e.key==='Enter')search($('#q').value)};
 document.querySelectorAll('aside button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('aside button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
   const v=b.dataset.v;
-  if(v==='home')home();else if(v==='rec')recommend();else if(v==='likes')showLikes();else if(v==='out')signOut(auth);else setup();
+  if(v==='home')home();else if(v==='rec')recommend();else if(v==='likes')showLikes();else if(v==='out')signOut(auth);else if(v==='dis')dislikeView();else setup();
 });
 
 function setup(){
   $('#view').innerHTML=`<div id="setup"><b style="color:var(--tx);font-size:16px">YouTube API 키</b><br>구글 클라우드 콘솔에서 YouTube Data API v3 켜고 키 발급받아서 붙여넣기. 키는 네 계정 전용 문서에 저장됨.<input id="ki" type="password" placeholder="AIza..." value="${esc(key)}"><button class="btn" style="height:40px" id="ks">저장</button></div>`;
   $('#ks').onclick=()=>{key=$('#ki').value.trim();store.set('yt_key',key);home()};
 }
+function dislikeView(){
+  $('#view').innerHTML=`<h2>싫어하는 장르</h2><div class="msg" style="padding-top:0">여기 넣은 단어는 검색할 때 자동으로 빠짐. 완벽하게 걸러지진 않음.</div><div class="chips">${dislikes.map((c,i)=>`<span class="chip">${esc(c)}<b data-d="${i}">×</b></span>`).join('')}<input id="nd" class="mini" placeholder="+ 추가"></div>`;
+}
+$('#view').onkeydown=e=>{if(e.target.id==='nd'&&e.key==='Enter'&&e.target.value.trim()){dislikes.push(e.target.value.trim());store.set();dislikeView();$('#nd').focus()}};
 function home(){
   $('#view').innerHTML=key?'<div class="msg">위에서 검색하거나 칩 눌러봐. 곡 좋아요 누르면 추천 탭이 취향 따라 바뀜.</div>':'';
   if(!key)setup();
@@ -116,7 +128,7 @@ async function search(q){
   if(!key){setup();return}
   $('#view').innerHTML='<div class="msg">찾는 중...</div>';
   try{
-    const u=`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&videoSyndicated=true&maxResults=25&q=${encodeURIComponent(q)}&key=${encodeURIComponent(key)}`;
+    const u=`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&videoSyndicated=true&maxResults=25&q=${encodeURIComponent(q+' '+dislikes.map(d=>'-'+d.replace(/\s+/g,'')).join(' '))}&key=${encodeURIComponent(key)}`;
     const r=await fetch(u),d=await r.json();
     if(d.error){$('#view').innerHTML=`<div class="msg">에러: ${esc(d.error.message)}<br>키가 맞는지, YouTube Data API v3가 켜져 있는지 확인해봐. 하루 할당량 넘었을 수도 있음.</div>`;return}
     list=d.items.map(i=>({id:i.id.videoId,title:dec(i.snippet.title),ch:dec(i.snippet.channelTitle),th:i.snippet.thumbnails.medium.url}));
@@ -127,6 +139,7 @@ function render(title){
   $('#view').innerHTML=`<h2>${esc(title)}</h2>`+(list.length?list.map((s,i)=>`<div class="row ${i===idx?'cur':''}" data-i="${i}"><img src="${s.th}" alt=""><div><div class="t">${esc(s.title)}</div><div class="c">${esc(s.ch)}</div></div><button class="like ${likes.some(l=>l.id===s.id)?'on':''}" data-l="${i}">♥</button></div>`).join(''):'<div class="msg">아직 없음</div>');
 }
 $('#view').onclick=e=>{
+  const dd=e.target.dataset.d;if(dd!==undefined){dislikes.splice(+dd,1);store.set();dislikeView();return}
   const l=e.target.closest('[data-l]');
   if(l){const s=list[+l.dataset.l];const k=likes.findIndex(x=>x.id===s.id);k>=0?likes.splice(k,1):likes.push(s);store.set('likes',likes);l.classList.toggle('on');return}
   const r=e.target.closest('.row');if(r)play(+r.dataset.i);
@@ -134,13 +147,14 @@ $('#view').onclick=e=>{
 function showLikes(){list=[...likes];idx=-1;render('좋아요 한 곡')}
 function recommend(){
   const src=[...likes,...hist.slice(-15)];
-  if(!src.length){$('#view').innerHTML='<div class="msg">아직 취향 데이터가 없음. 곡 몇 개 듣고 좋아요 눌러봐.</div>';return}
+  if(!src.length&&!genres.length){$('#view').innerHTML='<div class="msg">아직 취향 데이터가 없음. 곡 몇 개 듣고 좋아요 눌러봐.</div>';return}
   const stop=new Set(['official','video','mv','audio','lyrics','lyric','music','live','the','and','feat','ft','가사','공식','뮤직비디오','영상']);
   const cnt={};
   src.forEach((s,n)=>{const w=n<likes.length?2:1;
     (s.title+' '+s.ch).toLowerCase().replace(/[\[\]()【】|\-–_/,.!?"'“”]/g,' ').split(/\s+/).forEach(x=>{if(x.length>1&&!stop.has(x)&&!/^\d+$/.test(x))cnt[x]=(cnt[x]||0)+w})});
   const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]);
-  const q=top.join(' ')+' 플레이리스트';
+  const g=genres.length?genres[Math.floor(Math.random()*genres.length)]:'';
+  const q=(g+' '+top.slice(0,2).join(' ')).trim()+(src.length?' 플레이리스트':'');
   $('#q').value=q;search(q);
 }
 
@@ -189,7 +203,7 @@ onAuthStateChanged(auth,async u=>{
   try{
     const sn=await getDoc(doc(db,'users',u.uid));
     uid=u.uid;const d=sn.exists()?sn.data():{};
-    key=d.ytKey||'';likes=d.likes||[];hist=d.hist||[];
+    key=d.ytKey||'';likes=d.likes||[];hist=d.hist||[];genres=d.genres||[...DEF];dislikes=d.dislikes||[];renderChips();
     gate(false);home();
   }catch(e){gate(true,'접근 권한 없음. 이 UID를 파이어스토어 규칙에 넣어: '+u.uid)}
 });
