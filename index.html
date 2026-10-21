@@ -44,7 +44,7 @@ footer{grid-area:bar;background:#f7f7f7;border-top:1px solid var(--sf2);display:
 #pw.hide{display:none}
 #setup{max-width:480px;background:var(--sf);padding:22px;border-radius:14px;line-height:1.6;font-size:14px;color:var(--mu)}
 #setup input{width:100%;margin:12px 0}
-.chip{cursor:pointer}.chip b{margin-left:8px;color:var(--mu)}.chip b:hover{color:var(--tx)}.mini{padding:7px 14px;font-size:14px;width:130px}
+.chip{cursor:pointer}.chip b{margin-left:8px;color:var(--mu)}.chip b:hover{color:var(--tx)}.row .rd{opacity:0}.row:hover .rd{opacity:1}.chip .ac{display:none}.chip:hover .ac{display:inline}.mini{padding:7px 14px;font-size:14px;width:130px}
 #gate{position:fixed;inset:0;background:#fff;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px;line-height:1.6}#gate.off{display:none}#gate .btn{height:46px;font-size:15px}#gm{color:var(--mu);font-size:14px;max-width:420px;word-break:break-all}
 @media(max-width:800px){body{grid-template-columns:1fr;grid-template-areas:"main" "bar"}aside{display:none}footer{grid-template-columns:1fr}.vol{display:none}#pw{width:200px;height:112px}}
 </style>
@@ -96,13 +96,16 @@ const fmt=s=>{s=Math.floor(s||0);return Math.floor(s/60)+':'+String(s%60).padSta
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function renderChips(){
-  $('#chips').innerHTML=genres.map((c,i)=>`<span class="chip"><span data-g="${i}">${esc(c)}</span><b data-x="${i}">×</b></span>`).join('')+'<input id="ng" class="mini" placeholder="+ 장르 추가">';
+  $('#chips').innerHTML=genres.map((c,i)=>`<span class="chip"><span data-g="${i}">${esc(c)}</span><b class="ac" data-e="${i}">✎</b><b class="ac" data-x="${i}">×</b></span>`).join('')+'<span class="chip" id="addg" style="color:var(--mu)">+</span>';
 }
-$('#chips').onclick=e=>{const g=e.target.dataset.g,x=e.target.dataset.x;
+$('#chips').onclick=e=>{const g=e.target.dataset.g,x=e.target.dataset.x,ed=e.target.dataset.e;
+  if(e.target.id==='addg'){e.target.outerHTML='<input id="ng" class="mini" placeholder="장르 입력 후 엔터">';$('#ng').focus();return}
+  if(ed!==undefined){const n=prompt('장르 이름 수정',genres[+ed]);if(n&&n.trim()){genres[+ed]=n.trim();store.set();renderChips()}return}
   if(x!==undefined){genres.splice(+x,1);store.set();renderChips()}
   else if(g!==undefined){const n=genres[+g];$('#q').value=n;search(n)}};
 $('#chips').onkeydown=e=>{if(e.target.id==='ng'&&e.key==='Enter'&&e.target.value.trim()){genres.push(e.target.value.trim());store.set();renderChips();$('#ng').focus()}};
 renderChips();
+$('#chips').addEventListener('focusout',e=>{if(e.target.id==='ng'&&!e.target.value.trim())renderChips()});
 $('#go').onclick=()=>search($('#q').value);
 $('#q').onkeydown=e=>{if(e.key==='Enter')search($('#q').value)};
 document.querySelectorAll('aside button').forEach(b=>b.onclick=()=>{
@@ -116,14 +119,14 @@ function setup(){
   $('#ks').onclick=()=>{key=$('#ki').value.trim();store.set('yt_key',key);home()};
 }
 function dislikeView(){
-  $('#view').innerHTML=`<h2>싫어하는 장르</h2><div class="msg" style="padding-top:0">여기 넣은 단어는 검색할 때 자동으로 빠짐. 완벽하게 걸러지진 않음.</div><div class="chips">${dislikes.map((c,i)=>`<span class="chip">${esc(c)}<b data-d="${i}">×</b></span>`).join('')}<input id="nd" class="mini" placeholder="+ 추가"></div>`;
+  $('#view').innerHTML=`<h2>싫어하는 장르</h2><div class="msg" style="padding-top:0">여기 넣은 단어는 검색할 때 자동으로 빠짐. 완벽하게 걸러지진 않음.</div><div class="chips">${dislikes.map((c,i)=>`<span class="chip">${esc(c)}<b class="ac" data-d="${i}">×</b></span>`).join('')}<input id="nd" class="mini" placeholder="+ 추가"></div>`;
 }
 $('#view').onkeydown=e=>{if(e.target.id==='nd'&&e.key==='Enter'&&e.target.value.trim()){dislikes.push(e.target.value.trim());store.set();dislikeView();$('#nd').focus()}};
 function home(){
   $('#view').innerHTML=key?'<div class="msg">위에서 검색하거나 칩 눌러봐. 곡 좋아요 누르면 추천 탭이 취향 따라 바뀜.</div>':'';
   if(!key)setup();
 }
-async function search(q){
+async function search(q,label){
   if(!q.trim())return;
   if(!key){setup();return}
   $('#view').innerHTML='<div class="msg">찾는 중...</div>';
@@ -132,30 +135,74 @@ async function search(q){
     const r=await fetch(u),d=await r.json();
     if(d.error){$('#view').innerHTML=`<div class="msg">에러: ${esc(d.error.message)}<br>키가 맞는지, YouTube Data API v3가 켜져 있는지 확인해봐. 하루 할당량 넘었을 수도 있음.</div>`;return}
     list=d.items.map(i=>({id:i.id.videoId,title:dec(i.snippet.title),ch:dec(i.snippet.channelTitle),th:i.snippet.thumbnails.medium.url}));
-    idx=-1;render(`"${q}" 결과`);
+    idx=-1;render(label||`"${q}" 결과`);
   }catch(e){$('#view').innerHTML='<div class="msg">네트워크 에러남. 인터넷 되는지 확인. HTML 파일은 더블클릭해서 브라우저로 열어야 함.</div>'}
 }
+let curTitle='';
 function render(title){
-  $('#view').innerHTML=`<h2>${esc(title)}</h2>`+(list.length?list.map((s,i)=>`<div class="row ${i===idx?'cur':''}" data-i="${i}"><img src="${s.th}" alt=""><div><div class="t">${esc(s.title)}</div><div class="c">${esc(s.ch)}</div></div><button class="like ${likes.some(l=>l.id===s.id)?'on':''}" data-l="${i}">♥</button></div>`).join(''):'<div class="msg">아직 없음</div>');
+  curTitle=title;
+  $('#view').innerHTML=`<h2>${esc(title)}</h2>`+(list.length?list.map((s,i)=>`<div class="row ${i===idx?'cur':''}" data-i="${i}"><img src="${s.th}" alt=""><div><div class="t">${esc(s.title)}</div><div class="c">${esc(s.ch)}</div></div><span><button class="like rd" data-r="${i}" title="이 곡 기반 라디오">📻</button><button class="like ${likes.some(l=>l.id===s.id)?'on':''}" data-l="${i}">♥</button></span></div>`).join(''):'<div class="msg">아직 없음</div>');
 }
 $('#view').onclick=e=>{
+  const rb=e.target.closest('[data-r]');if(rb){radio(+rb.dataset.r);return}
   const dd=e.target.dataset.d;if(dd!==undefined){dislikes.splice(+dd,1);store.set();dislikeView();return}
   const l=e.target.closest('[data-l]');
   if(l){const s=list[+l.dataset.l];const k=likes.findIndex(x=>x.id===s.id);k>=0?likes.splice(k,1):likes.push(s);store.set('likes',likes);l.classList.toggle('on');return}
   const r=e.target.closest('.row');if(r)play(+r.dataset.i);
 };
 function showLikes(){list=[...likes];idx=-1;render('좋아요 한 곡')}
+const junk=/official|video|\bmv\b|m\/v|audio|lyrics?|\blive\b|\bhd\b|4k|가사|공식|뮤직비디오|(ft|feat)\.?.*/gi;
+const strip=t=>t.replace(/[\[\(【].*?[\]\)】]/g,' ');
+function cleanTitle(t){return strip(t).replace(junk,' ').replace(/\s+/g,' ').trim()}
+function artistOf(s){
+  let a=s.title.includes(' - ')?s.title.split(' - ')[0]:s.ch;
+  a=strip(a).replace(/vevo|official|공식|- topic|records?|entertainment/gi,' ').replace(/\s+/g,' ').trim();
+  return a||cleanTitle(s.title);
+}
+async function fetchList(q){
+  const full=q+' '+dislikes.map(d=>'-'+d.replace(/\s+/g,'')).join(' ');
+  const u=`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&videoSyndicated=true&maxResults=25&q=${encodeURIComponent(full)}&key=${encodeURIComponent(key)}`;
+  const d=await (await fetch(u)).json();
+  if(d.error)throw new Error(d.error.message);
+  return d.items.map(i=>({id:i.id.videoId,title:dec(i.snippet.title),ch:dec(i.snippet.channelTitle),th:i.snippet.thumbnails.medium.url}));
+}
+async function radio(i){
+  const seed=list[i];if(!seed||!key)return;
+  $('#view').innerHTML='<div class="msg">라디오 만드는 중...</div>';
+  try{
+    const r=(await fetchList(artistOf(seed)+' 노래 모음')).filter(x=>x.id!==seed.id);
+    list=[seed,...r];idx=-1;render('📻 '+cleanTitle(seed.title)+' 라디오');play(0);
+  }catch(e){$('#view').innerHTML=`<div class="msg">에러: ${esc(e.message)}</div>`}
+}
+let extending=false,pending=false;
+async function extend(go){
+  if(extending){if(go)pending=true;return}
+  extending=true;
+  const seed=list[idx];
+  try{
+    const have=new Set(list.map(x=>x.id));hist.forEach(h=>have.add(h.id));
+    const r=(await fetchList(artistOf(seed)+' 노래 모음')).filter(x=>!have.has(x.id));
+    if(!r.length)throw 0;
+    list=list.concat(r);
+    if($('#view').querySelector('.row')){const m=document.querySelector('main'),t=m.scrollTop;render(curTitle);m.scrollTop=t}
+    if(go)play(idx+1);
+  }catch(e){if(go)play(0)}
+  finally{
+    extending=false;
+    if(pending){pending=false;play(idx<list.length-1?idx+1:0)}
+  }
+}
 function recommend(){
-  const src=[...likes,...hist.slice(-15)];
-  if(!src.length&&!genres.length){$('#view').innerHTML='<div class="msg">아직 취향 데이터가 없음. 곡 몇 개 듣고 좋아요 눌러봐.</div>';return}
-  const stop=new Set(['official','video','mv','audio','lyrics','lyric','music','live','the','and','feat','ft','가사','공식','뮤직비디오','영상']);
-  const cnt={};
-  src.forEach((s,n)=>{const w=n<likes.length?2:1;
-    (s.title+' '+s.ch).toLowerCase().replace(/[\[\]()【】|\-–_/,.!?"'“”]/g,' ').split(/\s+/).forEach(x=>{if(x.length>1&&!stop.has(x)&&!/^\d+$/.test(x))cnt[x]=(cnt[x]||0)+w})});
-  const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]);
-  const g=genres.length?genres[Math.floor(Math.random()*genres.length)]:'';
-  const q=(g+' '+top.slice(0,2).join(' ')).trim()+(src.length?' 플레이리스트':'');
-  $('#q').value=q;search(q);
+  const seeds=[...likes,...hist.slice(-20)];
+  const useArtist=seeds.length&&(!genres.length||Math.random()<.6);
+  $('#q').value='';
+  if(useArtist){
+    const a=artistOf(seeds[Math.floor(Math.random()*seeds.length)]);
+    search(a+' 노래 모음',a+' 같은 느낌의 추천');
+  }else if(genres.length){
+    const g=genres[Math.floor(Math.random()*genres.length)];
+    search(g+' 플레이리스트',g+' 추천');
+  }else $('#view').innerHTML='<div class="msg">아직 취향 데이터가 없음. 장르를 추가하거나 곡에 좋아요를 눌러봐.</div>';
 }
 
 // player
@@ -175,13 +222,14 @@ window.onYouTubeIframeAPIReady=()=>{
 function play(i){
   if(!ready||!list[i])return;
   idx=i;const s=list[i];
+  if(key&&i>=list.length-2)extend(false);
   $('#pw').classList.remove('hide');
   player.loadVideoById(s.id);
   $('#nt').textContent=s.title;$('#nc').textContent=s.ch;
   hist.push(s);hist=hist.slice(-60);store.set('hist',hist);
   document.querySelectorAll('.row').forEach((r,n)=>r.classList.toggle('cur',n===i));
 }
-const next=()=>{if(list.length)play((idx+1)%list.length)};
+const next=()=>{if(!list.length)return;if(idx>=list.length-1&&key)extend(true);else play(idx+1)};
 const prev=()=>{if(list.length)play((idx-1+list.length)%list.length)};
 function tick(){
   if(!player||!player.getDuration)return;
